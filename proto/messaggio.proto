@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package messaggio;
+
+import "google/protobuf/wrappers.proto";
+
+option go_package = "git.aqq.me/go/bigbill/grpc/protobuf/billing/messaggio";
+
+service MessaggioBilling {
+  rpc ClaimMessageSending(ClaimMessageSendingRequest)
+      returns (stream BareResponse);
+  rpc ReportMessageDelivery(ReportMessageDeliveryRequest)
+      returns (stream BareResponse);
+}
+
+message ClaimMessageSendingRequest {
+  repeated MessageSendingIntent intents = 1;
+}
+
+message ReportMessageDeliveryRequest {
+  repeated MessageDeliveryReport reports = 1;
+}
+
+enum DeliveryStatus {
+  DELIVERY_STATUS_UNSPECIFIED = 0;
+  DELIVERY_STATUS_SENT = 1;
+  DELIVERY_STATUS_DELIVERED = 2;
+  DELIVERY_STATUS_UNDELIVERED = 3;
+}
+
+message MessageSendingIntent {
+  string service = 1;
+  string service_item = 2;
+  string country = 3;
+  string operator = 4;
+  string project_id = 5;
+  string gate_id = 6;
+  string gate_sender_id = 7;
+  string client_sender_id = 8;
+  string message_id = 9;
+  string phone_number = 10;
+  string session_id = 11;
+  int32 delivery_ttl = 12;
+}
+
+message MessageDeliveryReport {
+  string service = 1;
+  string service_item = 2;
+  string country = 3;
+  string operator = 4;
+  string project_id = 5;
+  string gate_id = 6;
+  string gate_sender_id = 7;
+  string client_sender_id = 8;
+  string message_id = 9;
+  string phone_number = 10;
+  string session_id = 11;
+  google.protobuf.BoolValue session_created = 12;
+  DeliveryStatus delivery_status = 13;
+}
+
+message BareResponse {
+  int32 index = 1;
+  bool ok = 2;
+  Error error = 3;
+}
+
+message Error {
+  string code = 1;
+  string message = 2;
+  map<string, string> validation_errors = 3;
+}

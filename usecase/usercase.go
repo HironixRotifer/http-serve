@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"httpserve/models"
+	"httpserve/utils"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -17,16 +18,31 @@ import (
 type Client struct {
 	Client messaggio.MessaggioBillingClient
 	ClaimMessageSendingRequest
+	Messages Messages
+}
+
+type Messages struct {
+	ClaimMessages chan *messaggio.MessageSendingIntent
+	BareResponse  chan *messaggio.BareResponse
 }
 
 type ClaimMessageSendingRequest interface {
 	NewClient() messaggio.MessaggioBillingClient
-	ClaimMessageSending(models.Intents) (*messaggio.BareResponse, error)
+	ClaimMessageSending([]*messaggio.MessageSendingIntent) (*messaggio.BareResponse, error)
+	SendMessage(Intent *messaggio.MessageSendingIntent)
+	CollectionOfRequests()
 }
 
 func NewUsecase() ClaimMessageSendingRequest {
+	cm := make(chan *messaggio.MessageSendingIntent, 10)
+	br := make(chan *messaggio.BareResponse, 10)
+
 	return &Client{
 		Client: NewClient(),
+		Messages: Messages{
+			cm,
+			br,
+		},
 	}
 }
 
@@ -43,26 +59,42 @@ func NewClient() messaggio.MessaggioBillingClient {
 	return client
 }
 
-func (c *Client) ClaimMessageSending(Intents models.Intents) (*messaggio.BareResponse, error) {
+// Кладём Intent в канал
+func (c *Client) SendMessage(Intent *messaggio.MessageSendingIntent) {
+	// Стоит добавлять проверку? CollectionOfRequests отправляет пачку из 10 записей или по таймауту в 10 секунд
+	c.Messages.ClaimMessages <- Intent
+}
+
+func (c *Client) GetResponse() *messaggio.BareResponse {
+	return <-c.Messages.BareResponse
+}
+
+// Складывает Intent-ы и отправляет их каждые 10 секунд или каждые 10 записей
+func (c *Client) CollectionOfRequests() {
+
+	flushFn := func(ctx context.Context, Intents []*messaggio.MessageSendingIntent) error {
+		resp, err := c.ClaimMessageSending(Intents)
+		if err != nil {
+			return err
+		}
+		c.Messages.BareResponse <- resp
+
+		return nil
+	}
+
+	err := utils.WriteBatch(c.Messages.ClaimMessages, 10, 10*time.Second, 10*time.Second, flushFn)
+	if err != nil {
+		log.Fatal("error writing batch ", err)
+		return
+	}
+}
+
+func (c *Client) ClaimMessageSending(Intents []*messaggio.MessageSendingIntent) (*messaggio.BareResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	claim, err := c.Client.ClaimMessageSending(ctx, &messaggio.ClaimMessageSendingRequest{
-		Intents: []*messaggio.MessageSendingIntent{
-			{
-				Service:        Intents.Service,
-				ServiceItem:    Intents.ServiceItem,
-				Country:        Intents.Country,
-				Operator:       Intents.Operator,
-				ProjectId:      Intents.ProjectID,
-				GateId:         Intents.GateID,
-				GateSenderId:   Intents.GateSenderID,
-				ClientSenderId: Intents.ClientSenderID,
-				MessageId:      Intents.MessageID,
-				PhoneNumber:    Intents.PhoneNumber,
-				DeliveryTtl:    Intents.DeliveryTTL,
-			},
-		},
+		Intents: Intents,
 	})
 	if err != nil {
 		return nil, err

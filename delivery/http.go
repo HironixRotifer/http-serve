@@ -1,12 +1,9 @@
 package delivery
 
 import (
-	"fmt"
-	"log"
+	messaggio "httpserve/proto"
 	"net/http"
-	"sync"
 
-	"httpserve/models"
 	"httpserve/usecase"
 
 	"github.com/go-chi/chi"
@@ -22,7 +19,7 @@ type requestDelivery struct {
 }
 
 type Request struct {
-	Intents []models.Intents `json:"intents"`
+	Intents *messaggio.MessageSendingIntent `json:"intents"`
 }
 
 func NewHandler(r chi.Router, usecase usecase.ClaimMessageSendingRequest) {
@@ -38,7 +35,6 @@ func NewHandler(r chi.Router, usecase usecase.ClaimMessageSendingRequest) {
 
 func (h *requestDelivery) handleRequest(w http.ResponseWriter, r *http.Request) {
 	var validate = validator.New()
-	wg := &sync.WaitGroup{}
 
 	req := &Request{}
 	if err := render.Bind(r, req); err != nil {
@@ -51,19 +47,7 @@ func (h *requestDelivery) handleRequest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	fmt.Println(req) // TODO: удалить
-
-	for _, intents := range req.Intents {
-		wg.Add(1)
-		go func(intent models.Intents) {
-			defer wg.Done()
-			resp, err := h.usecase.ClaimMessageSending(intent)
-			if err != nil {
-				log.Printf("error sending request: %v", err)
-			}
-			log.Printf("Get response: %v", resp)
-		}(intents)
-	}
+	h.usecase.SendMessage(req.Intents)
 
 	render.Status(r, http.StatusOK)
 }

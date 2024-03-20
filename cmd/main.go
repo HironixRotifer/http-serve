@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"httpserve/delivery"
-	messaggio "httpserve/proto"
 	"httpserve/usecase"
 
 	"net/http"
@@ -13,8 +12,7 @@ import (
 )
 
 var (
-	port       = 8080
-	IntentChan = make(chan *messaggio.MessageSendingIntent, 10)
+	port = 8080
 )
 
 func main() {
@@ -22,9 +20,6 @@ func main() {
 
 	uc := usecase.NewUsecase()
 	delivery.NewHandler(r, uc)
-
-	// Запуск горутины, которая будет собирать сообщения
-	go uc.CollectionOfRequests()
 
 	fmt.Printf("HTTP server listening on %v \n", port)
 	server := &http.Server{Addr: fmt.Sprintf(":%v", port), Handler: r}

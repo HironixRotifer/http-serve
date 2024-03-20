@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 	messaggio "httpserve/proto"
 	"log"
 	"time"
@@ -12,37 +11,22 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 type Client struct {
 	Client messaggio.MessaggioBillingClient
 	ClaimMessageSendingRequest
-	Messages Messages
-}
-
-type Messages struct {
-	ClaimMessages chan *messaggio.MessageSendingIntent
-	BareResponse  chan *messaggio.BareResponse
 }
 
 type ClaimMessageSendingRequest interface {
 	NewClient() messaggio.MessaggioBillingClient
 	ClaimMessageSending([]*messaggio.MessageSendingIntent) (*messaggio.BareResponse, error)
-	SendMessage(Intent *messaggio.MessageSendingIntent)
-	CollectionOfRequests()
+	CollectionOfRequests(chan *messaggio.MessageSendingIntent, chan *models.IntentResponse)
 }
 
 func NewUsecase() ClaimMessageSendingRequest {
-	cm := make(chan *messaggio.MessageSendingIntent, 10)
-	br := make(chan *messaggio.BareResponse, 10)
-
 	return &Client{
 		Client: NewClient(),
-		Messages: Messages{
-			cm,
-			br,
-		},
 	}
 }
 
@@ -52,37 +36,33 @@ func NewClient() messaggio.MessaggioBillingClient {
 		log.Fatalf("Failed to dial server: %v", err)
 	}
 	// defer conn.Close()
-	fmt.Println(conn)
 
 	client := messaggio.NewMessaggioBillingClient(conn)
 
 	return client
 }
 
-// Кладём Intent в канал
-func (c *Client) SendMessage(Intent *messaggio.MessageSendingIntent) {
-	// Стоит добавлять проверку? CollectionOfRequests отправляет пачку из 10 записей или по таймауту в 10 секунд
-	c.Messages.ClaimMessages <- Intent
-}
-
-func (c *Client) GetResponse() *messaggio.BareResponse {
-	return <-c.Messages.BareResponse
-}
-
-// Складывает Intent-ы и отправляет их каждые 10 секунд или каждые 10 записей
-func (c *Client) CollectionOfRequests() {
+// Складывает Intent-ы и отправляет их каждые 10 секунд или каждые LimitRequests записей
+func (c *Client) CollectionOfRequests(claimMessage chan *messaggio.MessageSendingIntent, bareResponse chan *models.IntentResponse) {
 
 	flushFn := func(ctx context.Context, Intents []*messaggio.MessageSendingIntent) error {
 		resp, err := c.ClaimMessageSending(Intents)
 		if err != nil {
 			return err
 		}
-		c.Messages.BareResponse <- resp
+
+		close(claimMessage)
+		r := &models.IntentResponse{
+			Intents:  Intents,
+			Response: resp,
+		}
+
+		bareResponse <- r
 
 		return nil
 	}
 
-	err := utils.WriteBatch(c.Messages.ClaimMessages, 10, 10*time.Second, 10*time.Second, flushFn)
+	err := utils.WriteBatch(claimMessage, models.LimitRequests, 10*time.Second, 10*time.Second, flushFn)
 	if err != nil {
 		log.Fatal("error writing batch ", err)
 		return
@@ -110,26 +90,9 @@ func (c *Client) ClaimMessageSending(Intents []*messaggio.MessageSendingIntent) 
 	return resp, nil
 }
 
-// Так понимаю, что эта реализация должна лежать на сервере биллинга
-func (c *Client) ReportMessageDelivery(Intents models.Intents) (*messaggio.BareResponse, error) {
+func (c *Client) ReportMessageDelivery(Intents []*messaggio.MessageDeliveryReport) (*messaggio.BareResponse, error) {
 	stream, err := c.Client.ReportMessageDelivery(context.Background(), &messaggio.ReportMessageDeliveryRequest{
-		Reports: []*messaggio.MessageDeliveryReport{
-			{
-				Service:        Intents.Service,
-				ServiceItem:    Intents.ServiceItem,
-				Country:        Intents.Country,
-				Operator:       Intents.Operator,
-				ProjectId:      Intents.ProjectID,
-				GateId:         Intents.GateID,
-				GateSenderId:   Intents.GateSenderID,
-				ClientSenderId: Intents.ClientSenderID,
-				MessageId:      Intents.MessageID,
-				PhoneNumber:    Intents.PhoneNumber,
-				SessionId:      "",
-				SessionCreated: &wrapperspb.BoolValue{},
-				DeliveryStatus: 1,
-			},
-		},
+		Reports: Intents,
 	})
 	if err != nil {
 		return nil, err

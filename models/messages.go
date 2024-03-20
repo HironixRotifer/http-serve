@@ -7,6 +7,6 @@ var (
 )
 
 type Messages struct {
-	ClaimMessages chan *messaggio.MessageSendingIntent
-	BareResponse  chan *IntentResponse
+	Intents  []*messaggio.MessageSendingIntent
+	Channels chan *messaggio.BareResponse
 }

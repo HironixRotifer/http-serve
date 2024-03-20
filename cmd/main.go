@@ -21,6 +21,8 @@ func main() {
 	uc := usecase.NewUsecase()
 	delivery.NewHandler(r, uc)
 
+	go uc.CollectionOfRequests()
+
 	fmt.Printf("HTTP server listening on %v \n", port)
 	server := &http.Server{Addr: fmt.Sprintf(":%v", port), Handler: r}
 	server.ListenAndServe()

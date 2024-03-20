@@ -14,19 +14,24 @@ import (
 )
 
 type Client struct {
-	Client messaggio.MessaggioBillingClient
+	Client  messaggio.MessaggioBillingClient
+	Channel chan *models.Messages
 	ClaimMessageSendingRequest
 }
 
 type ClaimMessageSendingRequest interface {
-	NewClient() messaggio.MessaggioBillingClient
 	ClaimMessageSending([]*messaggio.MessageSendingIntent) (*messaggio.BareResponse, error)
-	CollectionOfRequests(chan *messaggio.MessageSendingIntent, chan *models.IntentResponse)
+	SendToChannel([]*messaggio.MessageSendingIntent, chan *messaggio.BareResponse)
+	NewClient() messaggio.MessaggioBillingClient
+	CollectionOfRequests()
 }
 
 func NewUsecase() ClaimMessageSendingRequest {
+	ch := make(chan *models.Messages, models.LimitRequests)
+
 	return &Client{
-		Client: NewClient(),
+		Client:  NewClient(),
+		Channel: ch,
 	}
 }
 
@@ -42,27 +47,53 @@ func NewClient() messaggio.MessaggioBillingClient {
 	return client
 }
 
+func (c *Client) SendToChannel(intents []*messaggio.MessageSendingIntent, channel chan *messaggio.BareResponse) {
+	messageIntent := make([]*messaggio.MessageSendingIntent, models.LimitRequests)
+	message := &models.Messages{
+		Intents:  messageIntent,
+		Channels: channel,
+	}
+
+	c.Channel <- message
+}
+
 // Складывает Intent-ы и отправляет их каждые 10 секунд или каждые LimitRequests записей
-func (c *Client) CollectionOfRequests(claimMessage chan *messaggio.MessageSendingIntent, bareResponse chan *models.IntentResponse) {
+func (c *Client) CollectionOfRequests() {
+	flushFn := func(ctx context.Context, requests []*models.Messages) error {
+		// ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		// defer cancel()
 
-	flushFn := func(ctx context.Context, Intents []*messaggio.MessageSendingIntent) error {
-		resp, err := c.ClaimMessageSending(Intents)
-		if err != nil {
-			return err
+		intents := make([]*messaggio.MessageSendingIntent, 0, models.LimitRequests*models.LimitRequests)
+		channels := make([]chan *messaggio.BareResponse, 0, len(requests))
+
+		for _, value := range requests {
+			intents = append(intents, value.Intents...)
+			channels = append(channels, value.Channels)
 		}
 
-		close(claimMessage)
-		r := &models.IntentResponse{
-			Intents:  Intents,
-			Response: resp,
+		// resp, err := c.ClaimMessageSending(intents)
+		// if err != nil {
+		// 	return err
+		// }
+
+		resp := &messaggio.BareResponse{
+			Index: 2,
 		}
 
-		bareResponse <- r
+		for _, ch := range channels {
+			select {
+
+			case ch <- resp:
+
+			case <-time.After(time.Millisecond):
+
+			}
+		}
 
 		return nil
 	}
 
-	err := utils.WriteBatch(claimMessage, models.LimitRequests, 10*time.Second, 10*time.Second, flushFn)
+	err := utils.WriteBatch(c.Channel, models.LimitRequests, 10*time.Second, 10*time.Second, flushFn)
 	if err != nil {
 		log.Fatal("error writing batch ", err)
 		return
@@ -91,7 +122,10 @@ func (c *Client) ClaimMessageSending(Intents []*messaggio.MessageSendingIntent) 
 }
 
 func (c *Client) ReportMessageDelivery(Intents []*messaggio.MessageDeliveryReport) (*messaggio.BareResponse, error) {
-	stream, err := c.Client.ReportMessageDelivery(context.Background(), &messaggio.ReportMessageDeliveryRequest{
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	stream, err := c.Client.ReportMessageDelivery(ctx, &messaggio.ReportMessageDeliveryRequest{
 		Reports: Intents,
 	})
 	if err != nil {

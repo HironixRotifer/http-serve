@@ -2,13 +2,13 @@ package delivery
 
 import (
 	"encoding/json"
-	messaggio "httpserve/proto"
 	"log"
 	"net/http"
-	"sync"
 
 	"httpserve/models"
 	"httpserve/usecase"
+
+	messaggio "httpserve/proto"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/render"
@@ -24,10 +24,6 @@ type requestDelivery struct {
 	// logger  zerolog.Logger
 }
 
-type Request struct {
-	Intents []*messaggio.MessageSendingIntent `json:"intents"`
-}
-
 func NewHandler(r chi.Router, usecase usecase.ClaimMessageSendingRequest) {
 	handler := requestDelivery{
 		usecase: usecase,
@@ -39,9 +35,8 @@ func NewHandler(r chi.Router, usecase usecase.ClaimMessageSendingRequest) {
 }
 
 func (h *requestDelivery) handleRequest(w http.ResponseWriter, r *http.Request) {
-	wg := &sync.WaitGroup{}
-	req := &Request{}
 
+	req := &models.Request{}
 	if err := render.Bind(r, req); err != nil {
 		render.Render(w, r, req)
 		return
@@ -57,46 +52,23 @@ func (h *requestDelivery) handleRequest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	wg.Add(1)
+	ch := make(chan *messaggio.BareResponse, models.LimitRequests)
 
-	go func() {
-		defer wg.Done()
+	h.usecase.SendToChannel(req.Intents, ch)
 
-		msg := &models.Messages{
-			ClaimMessages: make(chan *messaggio.MessageSendingIntent, models.LimitRequests),
-			BareResponse:  make(chan *models.IntentResponse, models.LimitRequests),
-		}
+	// Получаем response и закрываем канал
+	resp := <-ch
+	close(ch)
 
-		for _, rq := range req.Intents {
-			msg.ClaimMessages <- rq
-		}
+	respJSON, err := json.Marshal(resp)
+	if err != nil {
+		log.Printf("error marshalling response: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
-		h.usecase.CollectionOfRequests(msg.ClaimMessages, msg.BareResponse)
-
-		// Получаем response и закрываем канал
-		resp := <-msg.BareResponse
-		close(msg.BareResponse)
-
-		respJSON, err := json.Marshal(resp)
-		if err != nil {
-			log.Printf("error marshalling response: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-
-		// Установка заголовков и отправка JSON-ответа
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write(respJSON)
-	}()
-
-	wg.Wait()
-}
-
-func (c *Request) Bind(r *http.Request) error {
-	return nil
-}
-
-func (p *Request) Render(w http.ResponseWriter, r *http.Request) error {
-	return nil
+	// Установка заголовков и отправка JSON-ответа
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(respJSON)
 }

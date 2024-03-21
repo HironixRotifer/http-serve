@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             v3.12.4
-// source: messaggio.proto
+// source: proto/messaggio.proto
 
 package messaggio
 
@@ -191,5 +191,5 @@ var MessaggioBilling_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "messaggio.proto",
+	Metadata: "proto/messaggio.proto",
 }

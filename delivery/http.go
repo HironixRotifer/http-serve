@@ -67,7 +67,6 @@ func (h *requestDelivery) handleRequest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Установка заголовков и отправка JSON-ответа
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(respJSON)

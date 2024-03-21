@@ -71,13 +71,14 @@ func (c *Client) CollectionOfRequests() {
 			channels = append(channels, value.Channels)
 		}
 
-		// resp, err := c.ClaimMessageSending(intents)
-		// if err != nil {
-		// 	return err
-		// }
-
-		resp := &messaggio.BareResponse{
-			Index: 2,
+		resp, err := c.ClaimMessageSending(intents)
+		if err != nil {
+			resp = &messaggio.BareResponse{
+				Error: &messaggio.Error{
+					Code:    "500",
+					Message: "Internal Server Error",
+				},
+			}
 		}
 
 		for _, ch := range channels {

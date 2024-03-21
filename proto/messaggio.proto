@@ -29,30 +29,30 @@ enum DeliveryStatus {
 }
 
 message MessageSendingIntent {
-  string service = 1;
-  string service_item = 2;
-  string country = 3;
-  string operator = 4;
-  string project_id = 5;
-  string gate_id = 6;
-  string gate_sender_id = 7;
-  string client_sender_id = 8;
-  string message_id = 9;
+  string channel = 1;
+  string country = 2;
+  string operator = 3;
+  string project_id = 4;
+  string gate_id = 5;
+  string gate_sender_id = 6;
+  string client_sender_id = 7;
+  string message_id = 8;
+  string message_label = 9;
   string phone_number = 10;
   string session_id = 11;
   int32 delivery_ttl = 12;
 }
 
 message MessageDeliveryReport {
-  string service = 1;
-  string service_item = 2;
-  string country = 3;
-  string operator = 4;
-  string project_id = 5;
-  string gate_id = 6;
-  string gate_sender_id = 7;
-  string client_sender_id = 8;
-  string message_id = 9;
+  string channel = 1;
+  string country = 2;
+  string operator = 3;
+  string project_id = 4;
+  string gate_id = 5;
+  string gate_sender_id = 6;
+  string client_sender_id = 7;
+  string message_id = 8;
+  string message_label = 9;
   string phone_number = 10;
   string session_id = 11;
   google.protobuf.BoolValue session_created = 12;

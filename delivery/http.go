@@ -2,7 +2,6 @@ package delivery
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 
 	"httpserve/models"
@@ -35,8 +34,10 @@ func NewHandler(r chi.Router, usecase usecase.ClaimMessageSendingRequest) {
 }
 
 func (h *requestDelivery) handleRequest(w http.ResponseWriter, r *http.Request) {
-
+	ch := make(chan *messaggio.BareResponse, models.LimitRequests)
+	res := make([]*messaggio.BareResponse, 0, len(ch))
 	req := &models.Request{}
+
 	if err := render.Bind(r, req); err != nil {
 		render.Render(w, r, req)
 		return
@@ -52,17 +53,16 @@ func (h *requestDelivery) handleRequest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	ch := make(chan *messaggio.BareResponse, models.LimitRequests)
-
 	h.usecase.SendToChannel(req.Intents, ch)
+	for v := range ch {
+		res = append(res, v)
+	}
 
-	// Получаем response и закрываем канал
-	resp := <-ch
-	close(ch)
-
-	respJSON, err := json.Marshal(resp)
+	respJSON, err := json.Marshal(&models.Request{
+		Intents:  req.Intents,
+		Response: res,
+	})
 	if err != nil {
-		log.Printf("error marshalling response: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}

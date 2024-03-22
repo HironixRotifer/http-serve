@@ -6,7 +6,7 @@ var (
 	LimitRequests = 10
 )
 
-type Messages struct {
-	Intents  []*messaggio.MessageSendingIntent
-	Channels chan *messaggio.BareResponse
+type MessageSendingIntent struct {
+	Intents []*messaggio.MessageSendingIntent
+	Channel chan *messaggio.BareResponse
 }

@@ -7,7 +7,7 @@ import (
 
 type Request struct {
 	Intents  []*messaggio.MessageSendingIntent `json:"intents"`
-	Response *messaggio.BareResponse           `json:"response"` // check to validation
+	Response []*messaggio.BareResponse         `json:"response"`
 }
 
 func (c *Request) Bind(r *http.Request) error {
